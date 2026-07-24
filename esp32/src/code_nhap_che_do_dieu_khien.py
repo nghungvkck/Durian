@@ -1,65 +1,65 @@
 import serial
 import wave
+import os
 import time
+import struct
 from datetime import datetime
 
 PORT = "COM9"
 BAUD = 921600
 SAMPLE_RATE = 16000
 
-ser = serial.Serial(PORT, BAUD, timeout=1)
+SAVE_DIR = "../src/dataset"
+folder_name = datetime.now().strftime("%Y%m%d_%H%M%S")  
+full_path = os.path.join(SAVE_DIR, folder_name)
+os.makedirs(full_path, exist_ok=True)
+
+status = input("Nhập status: ").strip()
+RELAY_TIME = int(input("Thời gian relay (ms): "))
+RECORD_TIME = int(input("Thời gian ghi âm (ms): "))
+# NUM_SHOTS = int(input("Số lần đấm: "))
+# INTERVAL_TIME = int(input("Thời gian nghỉ giữa các lần đấm (ms): "))
+
+ser = serial.Serial(PORT, BAUD, timeout=5)
 time.sleep(2)
 ser.reset_input_buffer()
 
-mode = input("Nhập chế độ (H/L/on): ").strip()
+for shot in range(1, 11):
+    command = f"{status},{RELAY_TIME},{RECORD_TIME}\n"
+    ser.write(command.encode())
+    print(f"\nĐã gửi lệnh lần {shot}")
 
-# =========================
-# Bật relay
-# =========================
-if mode == "H":
-    ser.write(b"H\n")
-    print("Đã bật relay")
+    while True:
+        line = ser.readline().decode(errors="ignore").strip()
+        if line == "SHOT_BEGIN":
+            break
 
-# =========================
-# Tắt relay
-# =========================
-elif mode == "L":
-    ser.write(b"L\n")
-    print("Đã tắt relay")
+    sample_count_data = ser.read(4)
+    sample_count = struct.unpack("<I", sample_count_data)[0]
+    audio_bytes = sample_count * 2
+    audio_data = b""
 
-# =========================
-# Chế độ tự động
-# =========================
-elif mode == "on":
+    while len(audio_data) < audio_bytes:
+        data = ser.read(audio_bytes - len(audio_data))
+        if not data:
+            print("Lỗi: không nhận đủ dữ liệu!")
+            break
+        audio_data += data
 
-    time_delay = int(input("Delay (ms): "))
-    record_time = int(input("Thời gian ghi (giây): "))
-    status = input("Trạng thái (P): ").strip()
+    filename = f"shot_{shot:03d}.wav"
+    filepath = os.path.join(full_path, filename)
 
-    cmd = f"on,{time_delay},{record_time*1000},{status}\n"
+    with wave.open(filepath, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(SAMPLE_RATE)
+        wav.writeframes(audio_data)
 
-    for i in range(10):
-        ser.write(cmd.encode())
-        expected_bytes = SAMPLE_RATE * 2 * record_time
-        audio = bytearray()
+    print(f"Đã lưu {filename}")
 
-        while len(audio) < expected_bytes:
-            remain = expected_bytes - len(audio)
-            data = ser.read(min(512, remain))
-            if data:
-                audio.extend(data)
+    if shot < 10:
+        # print(f"Nghỉ {11} ms...")
+        time.sleep(3)
 
-        filename = datetime.now().strftime("%Y%m%d_%H%M%S_%f.wav")
-
-        with wave.open(filename, "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(SAMPLE_RATE)
-            wf.writeframes(audio)
-
-        print(f"Lần {i+1}: {filename}")  
-        time.sleep(2) 
-else:
-    print("Lệnh không hợp lệ.")
-
+print("\nĐÃ THU XONG!")
 ser.close()

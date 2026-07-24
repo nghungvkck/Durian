@@ -60,9 +60,7 @@ void loop()
 
     for (int i = 0; i < count; i++)
     {
-        int32_t sample = samples[i];
-        // Chuyển 32 bit xuống 16 bit
-        sample >>= 16;
-        Serial.println(sample);
+        int16_t sample = samples[i] >> 16;
+        Serial.write((uint8_t*)&sample, sizeof(sample));
     }
 }

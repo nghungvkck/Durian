@@ -4,7 +4,7 @@ import time
 import os
 import threading
 
-BAUD = 115200
+BAUD = 921600
 
 
 def read_line(ser):

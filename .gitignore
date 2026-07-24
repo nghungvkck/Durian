@@ -1,1 +1,3 @@
 dataset_clean_sound/*
+eda/dataset/*
+.vscode/*

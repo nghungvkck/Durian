@@ -1,3 +1,6 @@
+#include <Arduino.h>
+#include <driver/i2s.h>
+
 #define S0 6
 #define S1 5
 #define S2 3
