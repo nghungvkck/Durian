@@ -21,15 +21,17 @@ class FeatureManager:
         self.columns = [
             'file_name', 'tool_type', 
             # 'segment_index',
-            'peak_freq', 'peak_mag',
-            'spectral_centroid', 'spectral_bandwidth',
+            'peak_freq', 
+            # 'peak_mag',
+            'spectral_centroid', 
+            'spectral_bandwidth',
             'spectral_rolloff', 'spectral_spread',
             'spectral_skewness', 'spectral_kurtosis',
             'rms_energy', 'zero_crossing_rate',
             'peak_to_peak', 'energy',
             'duration', 'start_time', 'end_time',
             # 'num_segments',
-            'extract_date'
+            # 'extract_date'
         ]
         self.df = self._load_or_create()
         self.last_saved_path = None
@@ -76,7 +78,7 @@ class FeatureManager:
                 'start_time': seg.get('start_time', 0),
                 'end_time': seg.get('end_time', 0),
                 # 'num_segments': num_segments,
-                'extract_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                # 'extract_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             new_rows.append(row)
         
@@ -93,7 +95,7 @@ class FeatureManager:
             'tool_type': tool_type,
             # 'segment_index': -1,
             # 'num_segments': 0,
-            'extract_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            # 'extract_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
         
         for key, value in agg_features.items():

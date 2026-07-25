@@ -1,5 +1,6 @@
 """
 Giao diện Single File - Rút gọn, đầy đủ chức năng
+Trích xuất đặc trưng cho nhiều file từ thư mục
 """
 
 import tkinter as tk
@@ -58,6 +59,9 @@ class SingleFileGUI:
         self.status_var = tk.StringVar(value="Ready")
         self.status_bar = None
         
+        # Danh sách file
+        self.all_files = []
+        
         self.setup_ui()
         self.load_audio_file()
         self.parent.after(500, self.run_analysis)
@@ -85,7 +89,7 @@ class SingleFileGUI:
         ttk.Label(scroll_frame, text="📊 Single File", font=('Arial', 14, 'bold')).pack(anchor=tk.W, pady=5)
         
         # 1. Danh sách file
-        file_frame = ttk.LabelFrame(scroll_frame, text="📁 Audio Files", padding=5)
+        file_frame = ttk.LabelFrame(scroll_frame, text="📁 Audio Files (Ctrl+click để chọn nhiều)", padding=5)
         file_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
         list_container = ttk.Frame(file_frame)
@@ -93,7 +97,7 @@ class SingleFileGUI:
         
         scroll = ttk.Scrollbar(list_container, orient=tk.VERTICAL)
         self.file_listbox = tk.Listbox(list_container, yscrollcommand=scroll.set,
-                                       font=('Consolas', 9), selectmode=tk.SINGLE,
+                                       font=('Consolas', 9), selectmode=tk.EXTENDED,
                                        bg='#2b2b2b', fg='#e0e0e0',
                                        selectbackground='#0078d4', height=6)
         scroll.config(command=self.file_listbox.yview)
@@ -104,7 +108,8 @@ class SingleFileGUI:
         btn_frame = ttk.Frame(file_frame)
         btn_frame.pack(fill=tk.X, pady=2)
         ttk.Button(btn_frame, text="🔄 Refresh", command=self.refresh_file_list).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
-        ttk.Button(btn_frame, text="📂 Browse", command=self.browse_file).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
+        ttk.Button(btn_frame, text="📂 Browse Files", command=self.browse_file).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
+        ttk.Button(btn_frame, text="📁 Browse Folder", command=self.browse_folder).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
         
         # 2. File info
         info_frame = ttk.LabelFrame(scroll_frame, text="📋 Current File", padding=5)
@@ -115,7 +120,7 @@ class SingleFileGUI:
         self.file_info_label.pack(anchor=tk.W)
         
         # 3. Parameters
-        param_frame = ttk.LabelFrame(scroll_frame, text="⚙️ Parameters", padding=5)
+        param_frame = ttk.LabelFrame(scroll_frame, text="⚙️ Parameters (chung cho tất cả file)", padding=5)
         param_frame.pack(fill=tk.X, pady=5)
         
         params = [
@@ -140,7 +145,7 @@ class SingleFileGUI:
             self.param_labels[label_text] = lbl
         
         # 4. Select Segments
-        select_frame = ttk.LabelFrame(scroll_frame, text="🎯 Select Segments", padding=5)
+        select_frame = ttk.LabelFrame(scroll_frame, text="🎯 Select Segments (áp dụng cho tất cả file)", padding=5)
         select_frame.pack(fill=tk.X, pady=5)
         
         range_frame = ttk.Frame(select_frame)
@@ -168,11 +173,13 @@ class SingleFileGUI:
         export_frame = ttk.LabelFrame(scroll_frame, text="💾 Export", padding=5)
         export_frame.pack(fill=tk.X, pady=5)
         
-        ttk.Button(export_frame, text="📁 Export WAV", 
+        ttk.Button(export_frame, text="📁 Export WAV (current file)", 
                   command=self.export_segments_to_wav).pack(fill=tk.X, pady=1)
-        ttk.Button(export_frame, text="📊 Extract Features", 
+        ttk.Button(export_frame, text="📊 Extract Features (1 file)", 
                   command=self.extract_and_save_features).pack(fill=tk.X, pady=1)
-        ttk.Button(export_frame, text="💾 Export CSV", 
+        ttk.Button(export_frame, text="📊 Extract ALL Selected Files", 
+                  command=self.extract_all_files).pack(fill=tk.X, pady=1)
+        ttk.Button(export_frame, text="💾 Export CSV (current)", 
                   command=self.export_results).pack(fill=tk.X, pady=1)
         
         # 6. Results
@@ -186,7 +193,6 @@ class SingleFileGUI:
         right_frame = ttk.Frame(main_panel)
         main_panel.add(right_frame, weight=3)
         
-        # Figure lớn hơn để các subplot có không gian
         self.fig = Figure(figsize=(10, 10), dpi=100)
         
         # Subplot 1: Waveform
@@ -196,9 +202,10 @@ class SingleFileGUI:
         self.ax1.set_ylabel('Amplitude', fontsize=9)
         self.ax1.grid(True, alpha=0.3)
         self.ax1.tick_params(labelsize=8)
-        self.line_wave, = self.ax1.plot([], [], 'b-', linewidth=0.8)
-        self.peak_scatter = self.ax1.scatter([], [], color='red', s=20)
+        self.line_wave, = self.ax1.plot([], [], 'b-', linewidth=1.2)
+        self.peak_scatter = self.ax1.scatter([], [], color='red', s=25, zorder=5)
         self.segment_patches = []
+        self.segment_labels = []
         
         # Subplot 2: Individual FFTs
         self.ax2 = self.fig.add_subplot(312)
@@ -217,16 +224,11 @@ class SingleFileGUI:
         self.ax3.grid(True, alpha=0.3)
         self.ax3.tick_params(labelsize=8)
         self.avg_line, = self.ax3.plot([], [], 'r-', linewidth=2)
-        self.peak_fft_scatter = self.ax3.scatter([], [], color='green', s=40)
+        self.peak_fft_scatter = self.ax3.scatter([], [], color='green', s=40, zorder=5)
         
-        # Điều chỉnh khoảng cách giữa các subplot
         self.fig.subplots_adjust(
-            left=0.10,    # Lề trái
-            right=0.95,   # Lề phải
-            bottom=0.08,  # Lề dưới
-            top=0.95,     # Lề trên
-            hspace=0.45,  # Khoảng cách dọc GIỮA các subplot
-            wspace=0.2    # Khoảng cách ngang
+            left=0.10, right=0.95, bottom=0.08, top=0.95,
+            hspace=0.45, wspace=0.2
         )
         
         self.canvas = FigureCanvasTkAgg(self.fig, master=right_frame)
@@ -241,8 +243,12 @@ class SingleFileGUI:
     # === CÁC HÀM XỬ LÝ ===
     
     def refresh_file_list(self):
+        """Làm mới danh sách file"""
         self.file_listbox.delete(0, tk.END)
-        audio_files = get_audio_files(self.current_dir)
+        if not self.all_files:
+            self.all_files = get_audio_files(self.current_dir)
+        
+        audio_files = self.all_files
         if not audio_files:
             self.file_listbox.insert(tk.END, "⚠️ No audio files")
             return
@@ -283,9 +289,8 @@ class SingleFileGUI:
         if not selection:
             return
         index = selection[0]
-        audio_files = get_audio_files(self.current_dir)
-        if index < len(audio_files):
-            self.load_selected_file(audio_files[index])
+        if index < len(self.all_files):
+            self.load_selected_file(self.all_files[index])
     
     def load_selected_file(self, filepath):
         self.update_status(f"Loading: {os.path.basename(filepath)}...")
@@ -301,13 +306,63 @@ class SingleFileGUI:
         self.parent.after(300, self.run_analysis)
     
     def browse_file(self):
-        filepath = filedialog.askopenfilename(
-            title="Select Audio File",
+        """Browse chọn nhiều file"""
+        filepaths = filedialog.askopenfilenames(
+            title="Select Audio Files",
             filetypes=[("Audio files", "*.wav *.WAV *.mp3 *.MP3 *.m4a *.M4A *.flac *.FLAC *.ogg *.OGG")]
         )
-        if filepath:
-            self.load_selected_file(filepath)
-            self.refresh_file_list()
+        
+        if not filepaths:
+            return
+        
+        for fp in filepaths:
+            if fp not in self.all_files:
+                self.all_files.append(fp)
+        
+        self.load_selected_file(filepaths[0])
+        self.refresh_file_list()
+        
+        for i, f in enumerate(self.all_files):
+            if f in filepaths:
+                self.file_listbox.selection_set(i)
+        
+        self.update_status(f"Selected {len(filepaths)} files")
+    
+    def browse_folder(self):
+        """Browse chọn thư mục chứa nhiều file audio"""
+        folder_path = filedialog.askdirectory(
+            title="Select Folder Containing Audio Files"
+        )
+        
+        if not folder_path:
+            return
+        
+        # Quét tất cả file audio trong thư mục và các thư mục con
+        audio_files = []
+        for root, dirs, files in os.walk(folder_path):
+            for file in files:
+                if file.lower().endswith(('.wav', '.mp3', '.m4a', '.flac', '.ogg')):
+                    audio_files.append(os.path.join(root, file))
+        
+        if not audio_files:
+            messagebox.showwarning("Warning", f"No audio files found in:\n{folder_path}")
+            return
+        
+        # Thêm vào danh sách file (nếu chưa có)
+        for fp in audio_files:
+            if fp not in self.all_files:
+                self.all_files.append(fp)
+        
+        # Load file đầu tiên để xem waveform
+        self.load_selected_file(audio_files[0])
+        self.refresh_file_list()
+        
+        # Highlight tất cả file vừa thêm
+        for i, f in enumerate(self.all_files):
+            if f in audio_files:
+                self.file_listbox.selection_set(i)
+        
+        self.update_status(f"Added {len(audio_files)} files from {folder_path}")
     
     def _clear_lines(self):
         for line in self.fft_lines:
@@ -321,6 +376,9 @@ class SingleFileGUI:
         for patch in self.segment_patches:
             patch.remove()
         self.segment_patches.clear()
+        for label in self.segment_labels:
+            label.remove()
+        self.segment_labels.clear()
     
     def on_param_change(self, *args):
         self._update_labels()
@@ -428,8 +486,9 @@ class SingleFileGUI:
                 color = colors[i % len(colors)]
                 patch = self.ax1.axvspan(seg['start_time'], seg['end_time'], alpha=0.15, color=color)
                 self.segment_patches.append(patch)
-                self.ax1.text((seg['start_time'] + seg['end_time'])/2, y_max * 0.9, 
-                             f'{i+1}', color=color, ha='center', fontsize=8)
+                label = self.ax1.text((seg['start_time'] + seg['end_time'])/2, y_max * 0.9, 
+                                     f'{i+1}', color=color, ha='center', fontsize=8, fontweight='bold')
+                self.segment_labels.append(label)
         
         for line in self.fft_lines:
             line.remove()
@@ -490,6 +549,7 @@ class SingleFileGUI:
             messagebox.showinfo("Success", f"Saved {len(saved)} files to {output_dir}")
     
     def extract_and_save_features(self):
+        """Trích xuất 1 file"""
         if not self.used_segments:
             messagebox.showwarning("Warning", "No segments!")
             return
@@ -513,6 +573,131 @@ class SingleFileGUI:
             manager.df = manager.df[manager.df['file_name'] != os.path.basename(self.wav_path)]
         num = manager.add_features(os.path.basename(self.wav_path), tool_type, features['segment_features'])
         messagebox.showinfo("Success", f"Saved {num} features to {csv_path}")
+    
+    def extract_all_files(self):
+        """Trích xuất đặc trưng cho TẤT CẢ file đã chọn trong listbox"""
+        from audio_core import FeatureManager, AudioAnalyzer
+        
+        # Lấy danh sách file đã chọn trong listbox
+        selection = self.file_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("Warning", "Please select files! (Ctrl+click to select multiple)")
+            return
+        
+        selected_files = [self.all_files[i] for i in selection if i < len(self.all_files)]
+        
+        if not selected_files:
+            messagebox.showwarning("Warning", "No valid files selected!")
+            return
+        
+        # Lấy tham số hiện tại
+        threshold = self.threshold.get()
+        pre_peak = self.pre_peak.get()
+        duration = self.segment_duration.get()
+        min_distance = self.min_distance.get()
+        max_freq = self.max_freq.get()
+        
+        start_idx = self.segment_start.get()
+        end_idx = self.segment_end.get()
+        
+        # Hỏi tool type
+        tool_type = simpledialog.askstring(
+            "Tool Type", 
+            f"Enter tool type for {len(selected_files)} files:",
+            initialvalue=os.path.basename(os.path.dirname(self.wav_path)) or "unknown"
+        )
+        if not tool_type:
+            return
+        
+        # Hỏi vị trí lưu CSV
+        csv_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv")],
+            initialfile="audio_features.csv",
+            title="Save features to CSV file"
+        )
+        if not csv_path:
+            return
+        
+        manager = FeatureManager(csv_path)
+        total_added = 0
+        processed_files = []
+        failed_files = []
+        
+        # Duyệt qua từng file đã chọn
+        for filepath in selected_files:
+            file_name = os.path.basename(filepath)
+            
+            # Load file
+            data, sr, _ = load_audio(filepath)
+            if data is None:
+                failed_files.append(file_name)
+                continue
+            
+            # Phân tích với tham số hiện tại
+            peaks, heights = AudioAnalyzer.detect_peaks(data, sr, threshold, min_distance)
+            all_segments = AudioAnalyzer.extract_segments(data, sr, peaks, pre_peak, duration)
+            
+            # Lọc segments theo range
+            total_segments = len(all_segments)
+            if end_idx == -1:
+                end = total_segments - 1
+            else:
+                end = end_idx
+            
+            if start_idx > end:
+                start, end = end, start_idx
+            else:
+                start, end = start_idx, end
+            
+            # Đảm bảo start và end trong giới hạn
+            start = max(0, min(start, total_segments - 1))
+            end = max(0, min(end, total_segments - 1))
+            
+            used_segments = get_segments_range(all_segments, start, end)
+            
+            if not used_segments:
+                failed_files.append(file_name)
+                continue
+            
+            # Tính FFT và trích xuất đặc trưng
+            freqs, avg_fft, _ = AudioAnalyzer.compute_fft(used_segments, sr, max_freq)
+            features = AudioAnalyzer.extract_features_from_segments(used_segments, sr, freqs, avg_fft)
+            
+            if not features['segment_features']:
+                failed_files.append(file_name)
+                continue
+            
+            # Xóa dữ liệu cũ nếu có
+            if manager.check_duplicate(file_name):
+                manager.df = manager.df[manager.df['file_name'] != file_name]
+            
+            # Thêm đặc trưng
+            num_added = manager.add_features(file_name, tool_type, features['segment_features'])
+            total_added += num_added
+            processed_files.append(file_name)
+        
+        # Hiển thị kết quả
+        if total_added > 0:
+            msg = f"✅ Extracted {total_added} features from {len(processed_files)} files:\n\n"
+            msg += f"📁 Success:\n  - " + "\n  - ".join(processed_files)
+            if failed_files:
+                msg += f"\n\n❌ Failed:\n  - " + "\n  - ".join(failed_files)
+            msg += f"\n\n🔧 Tool: {tool_type}"
+            msg += f"\n📊 Parameters:\n"
+            msg += f"  - Threshold: {threshold:.3f}\n"
+            msg += f"  - Pre-peak: {pre_peak:.3f}s\n"
+            msg += f"  - Duration: {duration:.3f}s\n"
+            msg += f"  - Min Distance: {min_distance:.3f}s\n"
+            msg += f"  - Max Freq: {max_freq:.0f}Hz\n"
+            msg += f"  - Segments: {start} to {end}\n\n"
+            msg += f"💾 Saved to: {csv_path}\n"
+            msg += f"📂 Total rows: {len(manager.df)}"
+            
+            messagebox.showinfo("✅ Success", msg)
+            self.update_status(f"✅ Extracted {total_added} features from {len(processed_files)} files")
+        else:
+            messagebox.showwarning("Warning", f"No features extracted!\nFailed: {', '.join(failed_files)}")
     
     def export_results(self):
         if self.avg_freq is None:
