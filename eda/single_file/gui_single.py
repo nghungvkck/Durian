@@ -1,6 +1,8 @@
 """
 Giao diện Single File - Rút gọn, đầy đủ chức năng
 Trích xuất đặc trưng cho nhiều file từ thư mục
+Export FFT points (mỗi segment = 1 hàng) ra Excel
+Preview resample FFT
 """
 
 import tkinter as tk
@@ -11,6 +13,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from matplotlib.figure import Figure
 import os
 import threading
+import pandas as pd
 
 from audio_core import (
     load_audio, AudioAnalyzer, get_audio_files, 
@@ -40,6 +43,9 @@ class SingleFileGUI:
         self.segment_duration = tk.DoubleVar(value=0.1)
         self.min_distance = tk.DoubleVar(value=0.1)
         self.max_freq = tk.DoubleVar(value=4000)
+        self.min_freq = tk.DoubleVar(value=0)
+        self.num_fft_points = tk.IntVar(value=512)
+        self.fft_size = tk.IntVar(value=4096)  # Số điểm FFT gốc
         
         # Segment selection
         self.segment_start = tk.IntVar(value=0)
@@ -120,19 +126,18 @@ class SingleFileGUI:
         self.file_info_label.pack(anchor=tk.W)
         
         # 3. Parameters
-        param_frame = ttk.LabelFrame(scroll_frame, text="⚙️ Parameters (chung cho tất cả file)", padding=5)
+        param_frame = ttk.LabelFrame(scroll_frame, text="⚙️ Parameters", padding=5)
         param_frame.pack(fill=tk.X, pady=5)
         
-        params = [
+        params_slider = [
             ("Threshold:", self.threshold, 0.001, 1.0),
             ("Pre-peak (s):", self.pre_peak, 0, 0.5),
             ("Duration (s):", self.segment_duration, 0.01, 0.5),
             ("Min Distance:", self.min_distance, 0.01, 0.5),
-            ("Max Freq (Hz):", self.max_freq, 500, 20000),
         ]
         
         self.param_labels = {}
-        for label_text, var, from_val, to_val in params:
+        for label_text, var, from_val, to_val in params_slider:
             row = ttk.Frame(param_frame)
             row.pack(fill=tk.X, pady=1)
             ttk.Label(row, text=label_text, width=12).pack(side=tk.LEFT)
@@ -144,8 +149,60 @@ class SingleFileGUI:
             lbl.pack(side=tk.LEFT, padx=2)
             self.param_labels[label_text] = lbl
         
+        # === MIN/MAX FREQ - Ô NHẬP SỐ ===
+        freq_frame = ttk.Frame(param_frame)
+        freq_frame.pack(fill=tk.X, pady=2)
+        
+        ttk.Label(freq_frame, text="Min Freq (Hz):", width=12).pack(side=tk.LEFT)
+        self.min_freq_entry = ttk.Entry(freq_frame, width=10, textvariable=self.min_freq)
+        self.min_freq_entry.pack(side=tk.LEFT, padx=3)
+        
+        ttk.Label(freq_frame, text="Max Freq (Hz):", width=12).pack(side=tk.LEFT, padx=5)
+        self.max_freq_entry = ttk.Entry(freq_frame, width=10, textvariable=self.max_freq)
+        self.max_freq_entry.pack(side=tk.LEFT, padx=3)
+        
+        # === SỐ ĐIỂM FFT (RESAMPLE) ===
+        points_frame = ttk.Frame(param_frame)
+        points_frame.pack(fill=tk.X, pady=2)
+        
+        ttk.Label(points_frame, text="Resample Points:", width=12).pack(side=tk.LEFT)
+        self.points_spinbox = ttk.Spinbox(
+            points_frame, 
+            from_=64, 
+            to=2048, 
+            textvariable=self.num_fft_points,
+            width=10,
+            command=self.on_param_change,
+            increment=64
+        )
+        self.points_spinbox.pack(side=tk.LEFT, padx=3)
+        ttk.Label(points_frame, text="(64-2048)").pack(side=tk.LEFT, padx=3)
+        
+        # === FFT SIZE (SỐ ĐIỂM FFT GỐC) ===
+        fft_size_frame = ttk.Frame(param_frame)
+        fft_size_frame.pack(fill=tk.X, pady=2)
+        
+        ttk.Label(fft_size_frame, text="FFT Size:", width=12).pack(side=tk.LEFT)
+        self.fft_size_spinbox = ttk.Spinbox(
+            fft_size_frame, 
+            from_=512, 
+            to=16384, 
+            textvariable=self.fft_size,
+            width=10,
+            command=self.on_param_change,
+            increment=512
+        )
+        self.fft_size_spinbox.pack(side=tk.LEFT, padx=3)
+        ttk.Label(fft_size_frame, text="(512-16384)").pack(side=tk.LEFT, padx=3)
+        
+        # Bind sự kiện khi thay đổi giá trị
+        self.min_freq.trace_add('write', self.on_param_change)
+        self.max_freq.trace_add('write', self.on_param_change)
+        self.num_fft_points.trace_add('write', self.on_param_change)
+        self.fft_size.trace_add('write', self.on_param_change)
+        
         # 4. Select Segments
-        select_frame = ttk.LabelFrame(scroll_frame, text="🎯 Select Segments (áp dụng cho tất cả file)", padding=5)
+        select_frame = ttk.LabelFrame(scroll_frame, text="🎯 Select Segments", padding=5)
         select_frame.pack(fill=tk.X, pady=5)
         
         range_frame = ttk.Frame(select_frame)
@@ -179,6 +236,10 @@ class SingleFileGUI:
                   command=self.extract_and_save_features).pack(fill=tk.X, pady=1)
         ttk.Button(export_frame, text="📊 Extract ALL Selected Files", 
                   command=self.extract_all_files).pack(fill=tk.X, pady=1)
+        ttk.Button(export_frame, text="📈 Export FFT Points (ALL files)", 
+                  command=self.export_fft_points).pack(fill=tk.X, pady=1)
+        ttk.Button(export_frame, text="👁️ Preview Resample", 
+                  command=self.preview_resample).pack(fill=tk.X, pady=1)
         ttk.Button(export_frame, text="💾 Export CSV (current)", 
                   command=self.export_results).pack(fill=tk.X, pady=1)
         
@@ -381,6 +442,25 @@ class SingleFileGUI:
         self.segment_labels.clear()
     
     def on_param_change(self, *args):
+        # === VALIDATE MIN/MAX FREQ ===
+        try:
+            min_freq = self.min_freq.get()
+        except:
+            self.min_freq.set(0)
+        
+        try:
+            max_freq = self.max_freq.get()
+        except:
+            self.max_freq.set(4000)
+        
+        # Đảm bảo min < max
+        try:
+            if self.min_freq.get() >= self.max_freq.get():
+                self.min_freq.set(0)
+                self.max_freq.set(4000)
+        except:
+            pass
+        
         self._update_labels()
         if self.data is not None:
             self.run_analysis()
@@ -391,7 +471,6 @@ class SingleFileGUI:
             ("Pre-peak (s):", self.pre_peak),
             ("Duration (s):", self.segment_duration),
             ("Min Distance:", self.min_distance),
-            ("Max Freq (Hz):", self.max_freq),
         ]:
             if label_text in self.param_labels:
                 val = var.get()
@@ -433,6 +512,7 @@ class SingleFileGUI:
             duration = self.segment_duration.get()
             min_distance = self.min_distance.get()
             max_freq = self.max_freq.get()
+            fft_size = self.fft_size.get()
             
             start_idx = self.segment_start.get()
             end_idx = self.segment_end.get()
@@ -456,7 +536,9 @@ class SingleFileGUI:
             )
             
             if self.used_segments:
-                freqs, avg_fft, fft_peaks = AudioAnalyzer.compute_fft(self.used_segments, self.samplerate, max_freq)
+                freqs, avg_fft, fft_peaks = AudioAnalyzer.compute_fft(
+                    self.used_segments, self.samplerate, max_freq, n_fft=fft_size
+                )
                 self.avg_freq = freqs
                 self.avg_fft = avg_fft
                 self.peaks_fft = fft_peaks
@@ -469,6 +551,25 @@ class SingleFileGUI:
             self.parent.after(0, lambda: self.update_status(f"Error: {str(e)}"))
     
     def _update_graphs(self, max_freq):
+        # === XỬ LÝ MIN/MAX FREQ ===
+        try:
+            min_freq = self.min_freq.get()
+        except:
+            min_freq = 0
+            self.min_freq.set(0)
+        
+        try:
+            max_freq = self.max_freq.get()
+        except:
+            max_freq = 4000
+            self.max_freq.set(4000)
+        
+        if min_freq >= max_freq:
+            min_freq = 0
+            max_freq = 4000
+            self.min_freq.set(0)
+            self.max_freq.set(4000)
+        
         self.line_wave.set_data(self.time_axis, self.data)
         self.ax1.set_xlim(0, self.total_time)
         y_max = max(np.max(np.abs(self.data)), 0.1)
@@ -484,7 +585,7 @@ class SingleFileGUI:
             colors = plt.cm.tab10(np.linspace(0, 1, min(10, len(self.used_segments))))
             for i, seg in enumerate(self.used_segments[:10]):
                 color = colors[i % len(colors)]
-                patch = self.ax1.axvspan(seg['start_time'], seg['end_time'], alpha=0.15, color=color)
+                patch = self.ax1.axvspan(seg['start_time'], seg['end_time'], alpha=0.12, color=color)
                 self.segment_patches.append(patch)
                 label = self.ax1.text((seg['start_time'] + seg['end_time'])/2, y_max * 0.9, 
                                      f'{i+1}', color=color, ha='center', fontsize=8, fontweight='bold')
@@ -504,19 +605,22 @@ class SingleFileGUI:
                 if np.max(fft_amp) > 0:
                     fft_amp = fft_amp / np.max(fft_amp)
                 freq_axis = np.fft.fftfreq(N, d=1/self.samplerate)[:N//2]
-                line, = self.ax2.plot(freq_axis, fft_amp, alpha=0.5, linewidth=1, color=color)
-                self.fft_lines.append(line)
+                mask = (freq_axis >= min_freq) & (freq_axis <= max_freq)
+                if np.sum(mask) > 0:
+                    line, = self.ax2.plot(freq_axis[mask], fft_amp[mask], alpha=0.5, linewidth=1, color=color)
+                    self.fft_lines.append(line)
         
-        self.ax2.set_xlim(0, max_freq)
+        self.ax2.set_xlim(min_freq, max_freq)
         self.ax2.set_ylim(0, 1)
         
         if self.avg_freq is not None:
-            mask = self.avg_freq <= max_freq
-            self.avg_line.set_data(self.avg_freq[mask], self.avg_fft[mask])
-            valid_peaks = [p for p in self.peaks_fft if p < len(mask) and mask[p]]
-            if valid_peaks:
-                self.peak_fft_scatter.set_offsets(np.column_stack((self.avg_freq[valid_peaks], self.avg_fft[valid_peaks])))
-            self.ax3.set_xlim(0, max_freq)
+            mask = (self.avg_freq >= min_freq) & (self.avg_freq <= max_freq)
+            if np.sum(mask) > 0:
+                self.avg_line.set_data(self.avg_freq[mask], self.avg_fft[mask])
+                valid_peaks = [p for p in self.peaks_fft if p < len(mask) and mask[p]]
+                if valid_peaks:
+                    self.peak_fft_scatter.set_offsets(np.column_stack((self.avg_freq[valid_peaks], self.avg_fft[valid_peaks])))
+            self.ax3.set_xlim(min_freq, max_freq)
             self.ax3.set_ylim(0, 1.1)
         
         self.canvas.draw()
@@ -578,19 +682,16 @@ class SingleFileGUI:
         """Trích xuất đặc trưng cho TẤT CẢ file đã chọn trong listbox"""
         from audio_core import FeatureManager, AudioAnalyzer
         
-        # Lấy danh sách file đã chọn trong listbox
         selection = self.file_listbox.curselection()
         if not selection:
             messagebox.showwarning("Warning", "Please select files! (Ctrl+click to select multiple)")
             return
         
         selected_files = [self.all_files[i] for i in selection if i < len(self.all_files)]
-        
         if not selected_files:
             messagebox.showwarning("Warning", "No valid files selected!")
             return
         
-        # Lấy tham số hiện tại
         threshold = self.threshold.get()
         pre_peak = self.pre_peak.get()
         duration = self.segment_duration.get()
@@ -600,7 +701,6 @@ class SingleFileGUI:
         start_idx = self.segment_start.get()
         end_idx = self.segment_end.get()
         
-        # Hỏi tool type
         tool_type = simpledialog.askstring(
             "Tool Type", 
             f"Enter tool type for {len(selected_files)} files:",
@@ -609,7 +709,6 @@ class SingleFileGUI:
         if not tool_type:
             return
         
-        # Hỏi vị trí lưu CSV
         csv_path = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV files", "*.csv")],
@@ -624,60 +723,45 @@ class SingleFileGUI:
         processed_files = []
         failed_files = []
         
-        # Duyệt qua từng file đã chọn
         for filepath in selected_files:
             file_name = os.path.basename(filepath)
-            
-            # Load file
             data, sr, _ = load_audio(filepath)
             if data is None:
                 failed_files.append(file_name)
                 continue
             
-            # Phân tích với tham số hiện tại
             peaks, heights = AudioAnalyzer.detect_peaks(data, sr, threshold, min_distance)
             all_segments = AudioAnalyzer.extract_segments(data, sr, peaks, pre_peak, duration)
             
-            # Lọc segments theo range
             total_segments = len(all_segments)
             if end_idx == -1:
                 end = total_segments - 1
             else:
-                end = end_idx
+                end = min(end_idx, total_segments - 1)
             
-            if start_idx > end:
-                start, end = end, start_idx
-            else:
-                start, end = start_idx, end
-            
-            # Đảm bảo start và end trong giới hạn
-            start = max(0, min(start, total_segments - 1))
-            end = max(0, min(end, total_segments - 1))
+            start = min(start_idx, total_segments - 1)
+            if start > end:
+                start, end = end, start
+            start = max(0, start)
+            end = min(total_segments - 1, end)
             
             used_segments = get_segments_range(all_segments, start, end)
-            
             if not used_segments:
                 failed_files.append(file_name)
                 continue
             
-            # Tính FFT và trích xuất đặc trưng
             freqs, avg_fft, _ = AudioAnalyzer.compute_fft(used_segments, sr, max_freq)
             features = AudioAnalyzer.extract_features_from_segments(used_segments, sr, freqs, avg_fft)
-            
             if not features['segment_features']:
                 failed_files.append(file_name)
                 continue
             
-            # Xóa dữ liệu cũ nếu có
             if manager.check_duplicate(file_name):
                 manager.df = manager.df[manager.df['file_name'] != file_name]
-            
-            # Thêm đặc trưng
             num_added = manager.add_features(file_name, tool_type, features['segment_features'])
             total_added += num_added
             processed_files.append(file_name)
         
-        # Hiển thị kết quả
         if total_added > 0:
             msg = f"✅ Extracted {total_added} features from {len(processed_files)} files:\n\n"
             msg += f"📁 Success:\n  - " + "\n  - ".join(processed_files)
@@ -693,11 +777,330 @@ class SingleFileGUI:
             msg += f"  - Segments: {start} to {end}\n\n"
             msg += f"💾 Saved to: {csv_path}\n"
             msg += f"📂 Total rows: {len(manager.df)}"
-            
             messagebox.showinfo("✅ Success", msg)
             self.update_status(f"✅ Extracted {total_added} features from {len(processed_files)} files")
         else:
             messagebox.showwarning("Warning", f"No features extracted!\nFailed: {', '.join(failed_files)}")
+    
+    # === HÀM PREVIEW RESAMPLE ===
+    def preview_resample(self):
+        """Xem trước kết quả resample FFT"""
+        from audio_core import AudioAnalyzer
+        from scipy.interpolate import interp1d
+        
+        if self.avg_freq is None or self.avg_fft is None:
+            messagebox.showwarning("Warning", "Please run analysis first!")
+            return
+        
+        try:
+            min_freq = self.min_freq.get()
+        except:
+            min_freq = 0
+            self.min_freq.set(0)
+        
+        try:
+            max_freq = self.max_freq.get()
+        except:
+            max_freq = 4000
+            self.max_freq.set(4000)
+        
+        try:
+            num_points = self.num_fft_points.get()
+        except:
+            num_points = 512
+            self.num_fft_points.set(512)
+        
+        if min_freq >= max_freq:
+            messagebox.showwarning("Warning", "Min Freq must be less than Max Freq!")
+            return
+        
+        # Lấy đoạn FFT cần cắt
+        mask = (self.avg_freq >= min_freq) & (self.avg_freq <= max_freq)
+        freq_cut = self.avg_freq[mask]
+        fft_cut = self.avg_fft[mask]
+        
+        if len(freq_cut) < 3:
+            messagebox.showwarning("Warning", f"Too few points in range {min_freq}-{max_freq}Hz!")
+            return
+        
+        # Resample
+        new_freqs = np.linspace(min_freq, max_freq, num_points)
+        interp_func = interp1d(freq_cut, fft_cut, kind='linear', 
+                               bounds_error=False, fill_value=0)
+        resampled_fft = interp_func(new_freqs)
+        
+        # Nội suy dữ liệu gốc về cùng điểm để so sánh
+        interp_orig = interp1d(freq_cut, fft_cut, kind='linear',
+                               bounds_error=False, fill_value=0)
+        original_at_new = interp_orig(new_freqs)
+        
+        # Tính sai số
+        error = np.abs(original_at_new - resampled_fft)
+        mse = np.mean(error ** 2)
+        mae = np.mean(error)
+        max_error = np.max(error)
+        
+        # Tạo figure mới để so sánh
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+        fig.suptitle(f'Resample Preview: {min_freq:.0f} - {max_freq:.0f} Hz → {num_points} points\nMSE: {mse:.6f} | MAE: {mae:.4f} | Max Error: {max_error:.4f}', 
+                    fontsize=12, fontweight='bold')
+        
+        # 1. FFT gốc (đánh dấu vùng cắt)
+        axes[0, 0].plot(self.avg_freq, self.avg_fft, 'b-', linewidth=1, alpha=0.7)
+        axes[0, 0].axvline(min_freq, color='r', linestyle='--', alpha=0.7, label=f'Min: {min_freq}Hz')
+        axes[0, 0].axvline(max_freq, color='g', linestyle='--', alpha=0.7, label=f'Max: {max_freq}Hz')
+        axes[0, 0].fill_between(self.avg_freq, 0, self.avg_fft, 
+                               where=(self.avg_freq >= min_freq) & (self.avg_freq <= max_freq),
+                               alpha=0.3, color='yellow')
+        axes[0, 0].set_title('Original FFT (cut region highlighted)')
+        axes[0, 0].set_xlabel('Frequency (Hz)')
+        axes[0, 0].set_ylabel('Magnitude')
+        axes[0, 0].legend(fontsize=8)
+        axes[0, 0].grid(True, alpha=0.3)
+        
+        # 2. Resampled FFT
+        axes[0, 1].plot(new_freqs, resampled_fft, 'r-', linewidth=2)
+        axes[0, 1].set_title(f'Resampled FFT ({num_points} points)')
+        axes[0, 1].set_xlabel('Frequency (Hz)')
+        axes[0, 1].set_ylabel('Magnitude')
+        axes[0, 1].grid(True, alpha=0.3)
+        
+        # 3. So sánh chồng
+        axes[1, 0].plot(freq_cut, fft_cut, 'b-', 
+                       linewidth=1, alpha=0.7, label=f'Original ({len(freq_cut)} pts)')
+        axes[1, 0].plot(new_freqs, resampled_fft, 'r-', 
+                       linewidth=1.5, alpha=0.7, label=f'Resampled ({num_points} pts)')
+        axes[1, 0].set_title('Overlay Comparison')
+        axes[1, 0].set_xlabel('Frequency (Hz)')
+        axes[1, 0].set_ylabel('Magnitude')
+        axes[1, 0].legend(fontsize=8)
+        axes[1, 0].grid(True, alpha=0.3)
+        
+        # 4. Sai số
+        axes[1, 1].plot(new_freqs, error, 'g-', linewidth=1)
+        axes[1, 1].axhline(y=mae, color='r', linestyle='--', 
+                          label=f'MAE: {mae:.4f}')
+        axes[1, 1].axhline(y=mae + np.std(error), color='orange', 
+                          linestyle=':', alpha=0.7, label=f'Std: {np.std(error):.4f}')
+        axes[1, 1].set_title(f'MSE: {mse:.6f} | Max Error: {max_error:.4f}')
+        axes[1, 1].set_xlabel('Frequency (Hz)')
+        axes[1, 1].set_ylabel('Error')
+        axes[1, 1].legend(fontsize=8)
+        axes[1, 1].grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.show()
+        
+        # In thông tin ra console
+        print(f"\n📊 RESAMPLE ANALYSIS:")
+        print(f"  Min Freq: {min_freq:.0f} Hz")
+        print(f"  Max Freq: {max_freq:.0f} Hz")
+        print(f"  Original points: {len(freq_cut)}")
+        print(f"  Resampled points: {num_points}")
+        print(f"  MSE: {mse:.6f}")
+        print(f"  MAE: {mae:.4f}")
+        print(f"  Max Error: {max_error:.4f}")
+        print(f"  ✅ Acceptable: {'YES' if mse < 0.01 else 'NO'}")
+    
+    # === HÀM EXPORT FFT POINTS ===
+    def export_fft_points(self):
+        """Export các điểm FFT thành file Excel (mỗi segment = 1 hàng)"""
+        from audio_core import AudioAnalyzer
+        import pandas as pd
+        
+        print(f"\n=== EXPORT FFT POINTS ===")
+        print(f"  start_idx: {self.segment_start.get()}")
+        print(f"  end_idx: {self.segment_end.get()}")
+        
+        selection = self.file_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("Warning", "Please select files! (Ctrl+click to select multiple)")
+            return
+        
+        selected_files = [self.all_files[i] for i in selection if i < len(self.all_files)]
+        if not selected_files:
+            messagebox.showwarning("Warning", "No valid files selected!")
+            return
+        
+        # Lấy tham số
+        try:
+            threshold = self.threshold.get()
+        except:
+            threshold = 0.1
+        
+        try:
+            pre_peak = self.pre_peak.get()
+        except:
+            pre_peak = 0.05
+        
+        try:
+            duration = self.segment_duration.get()
+        except:
+            duration = 0.1
+        
+        try:
+            min_distance = self.min_distance.get()
+        except:
+            min_distance = 0.1
+        
+        try:
+            max_freq = self.max_freq.get()
+        except:
+            max_freq = 4000
+            self.max_freq.set(4000)
+        
+        try:
+            min_freq = self.min_freq.get()
+        except:
+            min_freq = 0
+            self.min_freq.set(0)
+        
+        try:
+            num_points = self.num_fft_points.get()
+        except:
+            num_points = 512
+            self.num_fft_points.set(512)
+        
+        if min_freq >= max_freq:
+            messagebox.showwarning("Warning", "Min Freq must be less than Max Freq!")
+            return
+        
+        start_idx = self.segment_start.get()
+        end_idx = self.segment_end.get()
+        
+        # === NHẬP NHÃN DẠNG CHỮ ===
+        label = simpledialog.askstring(
+            "Label", 
+            f"Enter label for {len(selected_files)} files:\n"
+            "Examples: 'dao_nhua', 'dao_kim', 'chua_chin', 'chin', 'loai_A', 'loai_B'\n"
+            "Enter the label name:",
+            initialvalue="unknown"
+        )
+        if not label:
+            return
+        
+        # === FILE EXCEL DUY NHẤT ===
+        output_dir = os.path.join(os.getcwd(), "processing_Data")
+        os.makedirs(output_dir, exist_ok=True)
+        excel_path = os.path.join(output_dir, f"point_FFT_{min_freq:.0f}_{max_freq:.0f}Hz_{num_points}pts.xlsx")
+        
+        total_exported = 0
+        processed_files = []
+        failed_files = []
+        
+        # Cột: file_name, segment_index, label, freq_0, freq_1, ...
+        columns = ['file_name', 'segment_index', 'label']
+        columns += [f'freq_{i}' for i in range(num_points)]
+        
+        # Kiểm tra file đã tồn tại
+        if os.path.exists(excel_path):
+            try:
+                df_existing = pd.read_excel(excel_path, engine='openpyxl')
+                for col in columns:
+                    if col not in df_existing.columns:
+                        df_existing[col] = None
+                existing_cols = [c for c in columns if c in df_existing.columns]
+                df_existing = df_existing[existing_cols]
+            except:
+                df_existing = pd.DataFrame(columns=columns)
+        else:
+            df_existing = pd.DataFrame(columns=columns)
+        
+        for filepath in selected_files:
+            file_name = os.path.basename(filepath)
+            data, sr, _ = load_audio(filepath)
+            if data is None:
+                failed_files.append(file_name)
+                continue
+            
+            peaks, heights = AudioAnalyzer.detect_peaks(data, sr, threshold, min_distance)
+            all_segments = AudioAnalyzer.extract_segments(data, sr, peaks, pre_peak, duration)
+            
+            total_segments = len(all_segments)
+            print(f"  {file_name}: total_segments={total_segments}")
+            
+            # Xác định segments cần lấy
+            if end_idx == -1:
+                end = total_segments - 1
+            else:
+                end = min(end_idx, total_segments - 1)
+            
+            start = min(start_idx, total_segments - 1)
+            if start > end:
+                start, end = end, start
+            start = max(0, start)
+            end = min(total_segments - 1, end)
+            
+            used_segments = get_segments_range(all_segments, start, end)
+            
+            print(f"    start={start}, end={end} → {len(used_segments)} segments")
+            
+            if not used_segments:
+                failed_files.append(file_name)
+                continue
+            
+            # === DUYỆT QUA TỪNG SEGMENT ===
+            for seg_idx, seg in enumerate(used_segments):
+                # Tính FFT cho từng segment
+                data_seg = seg['data']
+                N = len(data_seg)
+                window = np.hanning(N)
+                fft_amp = np.abs(np.fft.fft(data_seg * window))[:N//2]
+                if np.max(fft_amp) > 0:
+                    fft_amp = fft_amp / np.max(fft_amp)
+                freq_axis = np.fft.fftfreq(N, d=1/sr)[:N//2]
+                
+                # Cắt và resample
+                new_freqs, fft_points = AudioAnalyzer.cut_and_resample_fft(
+                    freq_axis, fft_amp, min_freq, max_freq, num_points
+                )
+                if new_freqs is None:
+                    continue
+                
+                # Tạo row với segment_index
+                seg_index = start + seg_idx + 1
+                segment_name = f"{file_name}_seg{seg_index}"
+                row = [segment_name, seg_index, label]
+                row += list(fft_points)
+                
+                # Xóa dữ liệu cũ nếu có
+                if 'file_name' in df_existing.columns and 'segment_index' in df_existing.columns:
+                    df_existing = df_existing[
+                        ~((df_existing['file_name'] == segment_name) & 
+                          (df_existing['segment_index'] == seg_index))
+                    ]
+                
+                # Thêm vào dataframe
+                new_row = pd.DataFrame([row], columns=columns)
+                df_existing = pd.concat([df_existing, new_row], ignore_index=True)
+                total_exported += 1
+            
+            processed_files.append(file_name)
+        
+        if total_exported > 0:
+            # Lưu file Excel
+            df_existing.to_excel(excel_path, index=False, engine='openpyxl')
+            
+            msg = f"✅ Exported {total_exported} segments from {len(processed_files)} files:\n\n"
+            msg += f"📁 Files:\n  - " + "\n  - ".join(processed_files)
+            if failed_files:
+                msg += f"\n\n❌ Failed:\n  - " + "\n  - ".join(failed_files)
+            msg += f"\n\n📊 Parameters:\n"
+            msg += f"  - Min Freq: {min_freq:.0f}Hz\n"
+            msg += f"  - Max Freq: {max_freq:.0f}Hz\n"
+            msg += f"  - Points: {num_points}\n"
+            msg += f"  - Label: {label}\n"
+            msg += f"  - Segments: {start} to {end}\n\n"
+            msg += f"💾 Saved to: {excel_path}"
+            
+            messagebox.showinfo("✅ Success", msg)
+            self.update_status(f"✅ Exported {total_exported} segments to {excel_path}")
+        else:
+            msg = f"No segments exported!\n"
+            if failed_files:
+                msg += f"Failed: {', '.join(failed_files)}\n\n"
+            msg += "Check console for details."
+            messagebox.showwarning("Warning", msg)
     
     def export_results(self):
         if self.avg_freq is None:

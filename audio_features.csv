@@ -1,0 +1,28 @@
+Mô hình,Loại,Phân loại 2 lớp,Phân loại đa lớp,Hồi quy,Phân cụm,Dữ liệu bảng,Ảnh,Âm thanh,Ngôn ngữ,Chuỗi thời gian,Độ chính xác,Huấn luyện,Suy luận,Dữ liệu phù hợp,Cần chuẩn hóa,Cần PCA,Giải thích,Khả năng nhúng MCU,Ghi chú
+Logistic Regression,ML,1,1,1,0,10,1,2,2,1,3,10,10,Nhỏ,Có,Có,10,10,Baseline
+Decision Tree,ML,1,1,1,0,10,1,1,0,1,3,10,10,Nhỏ,Không,Không,10,10,Dễ chuyển C
+Random Forest,ML,1,1,1,0,10,2,2,0,2,4,8,7,Trung bình-Lớn,Không,Không,7,7,Ensemble
+Extra Trees,ML,1,1,1,0,10,2,2,0,2,4,8,7,Trung bình-Lớn,Không,Không,7,7,Random Forest cải tiến
+AdaBoost,ML,1,1,1,0,8,1,1,0,1,3,8,8,Trung bình,Không,Không,7,7,Boosting
+Gradient Boosting,ML,1,1,1,0,10,1,2,0,2,4,6,8,Trung bình,Không,Không,4,7,Boosting
+XGBoost,ML,1,1,1,0,10,2,3,0,2,5,6,8,Trung bình-Lớn,Không,Không,4,7,Mạnh nhất cho Tabular
+LightGBM,ML,1,1,1,0,10,2,3,0,2,5,10,10,Lớn,Không,Không,4,7,Huấn luyện rất nhanh
+CatBoost,ML,1,1,1,0,10,2,2,0,2,5,6,6,Trung bình,Không,Không,4,4,Tốt với dữ liệu categorical
+SVM Linear,ML,1,1,1,0,8,2,2,2,1,4,8,10,Nhỏ-TrB,Có,Có,6,8,Dữ liệu tuyến tính
+SVM RBF,ML,1,1,1,0,8,2,3,2,2,4,4,4,Nhỏ,Có,Có,4,2,Phi tuyến
+KNN,ML,1,1,1,0,6,2,2,0,2,3,10,2,Nhỏ,Có,Có,8,2,Không cần train
+Naive Bayes,ML,1,1,0,0,6,1,2,10,1,3,10,10,Nhỏ,Không,Không,8,10,NLP mạnh
+K-Means,ML,0,0,0,1,8,1,2,0,2,3,8,8,Nhỏ-Lớn,Có,Có,8,8,Không giám sát 
+DBSCAN,ML,0,0,0,1,6,1,2,0,2,3,6,6,Nhỏ,Có,Có,6,4,Tìm cụm bất kỳ
+MLP,DL,1,1,1,0,8,3,4,3,3,4,4,8,Trung bình-Lớn,Có,Có,2,6,TinyML
+CNN,DL,1,1,1,0,2,10,8,2,2,5,2,6,Lớn,Không,Không,2,4,Ảnh
+1D CNN,DL,1,1,1,0,4,2,10,2,8,5,4,8,Trung bình,Không,Không,2,6,Âm thanh
+RNN,DL,1,1,1,0,2,2,8,10,10,6,4,6,Trung bình,Không,Không,2,4,Chuỗi
+LSTM,DL,1,1,1,0,2,4,10,10,10,10,2,6,Lớn,Không,Không,2,4,Chuỗi dài
+GRU,DL,1,1,1,0,2,4,10,8,10,8,4,8,Trung bình,Không,Không,2,6,Nhẹ hơn LSTM
+Bi-LSTM,DL,1,1,1,0,2,4,10,10,10,10,2,4,Lớn,Không,Không,2,2,Hai chiều
+CNN + LSTM,DL,1,1,1,0,2,6,10,6,10,10,2,4,Lớn,Không,Không,2,2,Âm thanh video
+Transformer,DL,1,1,1,0,4,8,8,10,10,10,2,4,Rất lớn,Không,Không,2,2,SOTA NLP
+Vision Transformer (ViT),DL,1,1,0,0,2,10,6,2,2,10,2,4,Rất lớn,Không,Không,2,2,Ảnh
+Audio Spectrogram Transformer (AST),DL,1,1,0,0,2,4,10,2,6,10,2,4,Rất lớn,Không,Không,2,2,Spectrogram
+Conformer,DL,1,1,0,0,2,4,10,8,10,10,2,4,Rất lớn,Không,Không,2,2,SOTA Speech Recognition

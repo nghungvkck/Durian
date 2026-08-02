@@ -29,7 +29,9 @@ class FeatureManager:
             'spectral_skewness', 'spectral_kurtosis',
             'rms_energy', 'zero_crossing_rate',
             'peak_to_peak', 'energy',
-            'duration', 'start_time', 'end_time',
+            'duration', 
+            'start_time', 
+            'end_time',
             # 'num_segments',
             # 'extract_date'
         ]
@@ -150,3 +152,76 @@ class FeatureManager:
     def get_dataframe(self):
         """Trả về dataframe hiện tại"""
         return self.df
+
+    # ===== THÊM VÀO CUỐI FILE =====
+
+    def save_fft_points(self, file_name, tool_type, label, freq_points, 
+                        min_freq, max_freq, num_points=512):
+        """
+        Lưu các điểm FFT đã cắt vào CSV
+        
+        Parameters:
+        - file_name: tên file
+        - tool_type: loại đầu gõ
+        - label: nhãn (0, 1, 2, ...)
+        - freq_points: mảng biên độ FFT (num_points điểm)
+        - min_freq: tần số bắt đầu
+        - max_freq: tần số kết thúc
+        - num_points: số điểm
+        
+        Returns:
+        - str: đường dẫn file đã lưu
+        """
+        # Tên file csv
+        fft_path = self.csv_path.replace('.csv', f'_fft_points_{min_freq:.0f}_{max_freq:.0f}Hz_{num_points}pts.csv')
+        
+        # Tạo tên cột
+        columns = ['file_name', 'tool_type', 'label']
+        columns += [f'freq_{i}' for i in range(num_points)]
+        
+        # Kiểm tra file đã tồn tại chưa
+        if os.path.exists(fft_path):
+            df_existing = pd.read_csv(fft_path)
+        else:
+            df_existing = pd.DataFrame(columns=columns)
+        
+        # Tạo row dữ liệu mới
+        row = [file_name, tool_type, label]
+        row += list(freq_points)
+        
+        # Thêm vào dataframe
+        new_row = pd.DataFrame([row], columns=columns)
+        df_new = pd.concat([df_existing, new_row], ignore_index=True)
+        
+        # Lưu file
+        df_new.to_csv(fft_path, index=False)
+        
+        return fft_path
+
+    def save_multiple_fft_points(self, data_list, min_freq, max_freq, num_points=512):
+        """
+        Lưu nhiều file FFT points vào CSV
+        
+        Parameters:
+        - data_list: list các dict {file_name, tool_type, label, freq_points}
+        - min_freq: tần số bắt đầu
+        - max_freq: tần số kết thúc
+        - num_points: số điểm
+        
+        Returns:
+        - str: đường dẫn file đã lưu
+        """
+        fft_path = self.csv_path.replace('.csv', f'_fft_points_{min_freq:.0f}_{max_freq:.0f}Hz_{num_points}pts.csv')
+        
+        columns = ['file_name', 'tool_type', 'label']
+        columns += [f'freq_{i}' for i in range(num_points)]
+        
+        df = pd.DataFrame(columns=columns)
+        
+        for item in data_list:
+            row = [item['file_name'], item['tool_type'], item['label']]
+            row += list(item['freq_points'])
+            df.loc[len(df)] = row
+        
+        df.to_csv(fft_path, index=False)
+        return fft_path
