@@ -318,3 +318,37 @@ class AudioAnalyzer:
         resampled_fft = interp_func(new_freqs)
         
         return new_freqs, resampled_fft
+
+    # ===== HÀM LỌC TẦN SỐ VÀ IFFT =====
+    @staticmethod
+    def apply_filter_and_inverse_fft(data, sr, min_freq, max_freq):
+        """
+        Cắt tần số (lọc) và biến đổi ngược FFT để tạo lại âm thanh
+        
+        Parameters:
+        - data: tín hiệu gốc
+        - sr: sample rate
+        - min_freq: tần số thấp nhất giữ lại
+        - max_freq: tần số cao nhất giữ lại
+        
+        Returns:
+        - filtered_data: tín hiệu đã lọc (chỉ giữ tần số trong khoảng min_freq-max_freq)
+        """
+        # FFT
+        fft_data = np.fft.fft(data)
+        freqs = np.fft.fftfreq(len(data), d=1/sr)
+        
+        # Tạo mask: chỉ giữ các tần số trong khoảng
+        mask = (np.abs(freqs) >= min_freq) & (np.abs(freqs) <= max_freq)
+        
+        # Áp dụng mask (cắt bỏ tần số ngoài khoảng)
+        fft_filtered = fft_data * mask
+        
+        # IFFT (biến đổi ngược về miền thời gian)
+        filtered_data = np.fft.ifft(fft_filtered).real
+        
+        # Chuẩn hóa về [-1, 1]
+        if np.max(np.abs(filtered_data)) > 0:
+            filtered_data = filtered_data / np.max(np.abs(filtered_data))
+        
+        return filtered_data
